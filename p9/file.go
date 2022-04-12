@@ -132,6 +132,15 @@ type File interface {
 	// On the server, FSync has a read concurrency guarantee.
 	FSync() error
 
+	// Lock locks the file. The operation as define in 9P2000.L
+	// is fairly ambitious, and in most implementations it is
+	// just using flock.  But we provide the full API for anyone
+	// who thinks they want it.
+	//
+	// Many implementations do nothing, successfully;
+	// or call flock (lock the whole file).
+	Lock(pid, locktype, flags int, start, length uint64, client string) error
+
 	// Create creates a new regular file and opens it according to the
 	// flags given. This file is already Open.
 	//
