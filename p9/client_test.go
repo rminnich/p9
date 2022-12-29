@@ -86,3 +86,72 @@ func TestVersion(t *testing.T) {
 	}
 
 }
+
+func BenchTVersion(b *testing.B) {
+	// First, create a new server and connection.
+	l := bufconn.Listen(int(DefaultMessageSize))
+
+	// Create a new server and clienb.
+	s := NewServer(nil, WithServerLogger(ulogtest.Logger{TB: b}))
+	go s.Serve(l)
+
+	client, err := l.Dial()
+	if err != nil {
+		b.Fatalf("got %v, expected nil", err)
+	}
+
+	// NewClient does a Tversion exchange, so this is our test for success.
+	c, err := NewClient(client,
+		WithMessageSize(1024*1024 /* 1M message size */),
+		WithClientLogger(ulogtest.Logger{TB: b}),
+	)
+	if err != nil {
+		b.Fatalf("got %v, expected nil", err)
+	}
+
+	want := rversion{
+		Version: "unknown",
+		MSize:   0,
+	}
+	// Check a bogus version string.
+	var r rversion
+	if err := c.sendRecv(&tversion{Version: "notokay", MSize: 1024 * 1024}, &r); err != nil {
+		b.Errorf("err %v", err)
+	}
+	if r != want {
+		b.Errorf("got %v, want %v", r, want)
+	}
+
+	// Check a bogus version number.
+	if err := c.sendRecv(&tversion{Version: "9P1000.L", MSize: 1024 * 1024}, &r); err != nil {
+		b.Errorf("err %v", err)
+	}
+	if r != want {
+		b.Errorf("got %v, want %v", r, want)
+	}
+
+	// Check an invalid MSize.
+	if err := c.sendRecv(&tversion{Version: versionString(version9P2000L, highestSupportedVersion), MSize: 0}, &r); err != nil {
+		b.Errorf("err %v", err)
+	}
+	if r != want {
+		b.Errorf("got %v, want %v", r, want)
+	}
+
+	want = rversion{
+		Version: versionString(version9P2000L, highestSupportedVersion),
+		MSize:   1024 * 1024,
+	}
+	// Check a too high version number.
+	if err := c.sendRecv(&tversion{Version: versionString(version9P2000L, highestSupportedVersion+1), MSize: 1024 * 1024}, &r); err != nil {
+		b.Errorf("err %v", err)
+	}
+	if r != want {
+		b.Errorf("got %v, want %v", r, want)
+	}
+	for i := 0; i < b.N; i++ {
+		if err := c.sendRecv(&tversion{Version: versionString(version9P2000L, highestSupportedVersion), MSize: 8192}, &r); err != nil {
+			b.Fatalf("iter %d: %v", i, err)
+		}
+	}
+}
